@@ -23,7 +23,7 @@
         <div class="roomListRoom__header">
             <a href="{% url 'user_profile' room.host.id %}" class="roomListRoom__author">
                 <div class="avatar avatar--small active">
-                    <img src="https://randomuser.me/api/portraits/men/11.jpg"/>
+                    <img src="{{room.host.avatar.url}}"/>
                 </div>
                 <span>@{{room.host.username}}</span>
             </a>
