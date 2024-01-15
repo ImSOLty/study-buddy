@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from .models import Room, Topic, Message
-from .forms import RoomForm
+from .forms import RoomForm, UserForm
 from django.http import HttpResponse
 
 
@@ -67,7 +67,7 @@ def home(request):
 
     room_messages = Message.objects.filter(room__topic__name__icontains=q)
 
-    topics = Topic.objects.all()
+    topics = Topic.objects.all()[:5]
     context = {'rooms': rooms, 'topics': topics, 'rooms_count': rooms.count(), 'room_messages': room_messages}
     return render(request, 'base_app/home.html', context)
 
@@ -95,23 +95,42 @@ def user_profile(request, pk):
     rooms = user.room_set.all()
     topics = Topic.objects.all()
     room_messages = Message.objects.filter(user=user)
-    context = {'user': user, 'rooms': rooms, 'room_messages': room_messages, 'topics': topics}
+    context = {'user': user, 'rooms': rooms, 'rooms_count': rooms.count(), 'room_messages': room_messages,
+               'topics': topics}
     return render(request, 'base_app/profile.html', context=context)
+
+
+@login_required(login_url='login')
+def update_user(request):
+    user = request.user
+    form = UserForm(instance=user)
+    if request.method == "POST":
+        form = UserForm(request.POST, instance=user)
+        if form.is_valid():
+            form.save()
+            return redirect('user_profile', pk=user.id)
+    context = {'form': form}
+    return render(request, 'base_app/update_user.html', context=context)
 
 
 @login_required(login_url='login')
 def create_room(request):
     form = RoomForm()
 
-    if request.method == 'POST':
-        form = RoomForm(request.POST)
-        if form.is_valid():
-            room = form.save(commit=False)
-            room.host = request.user
-            room.save()
-            return redirect('home')
+    topics = Topic.objects.all()
 
-    context = {'form': form}
+    if request.method == 'POST':
+        topic_name = request.POST.get('topic')
+        topic, created = Topic.objects.get_or_create(name=topic_name)
+        Room.objects.create(
+            host=request.user,
+            topic=topic,
+            name=request.POST.get('name'),
+            description=request.POST.get('description')
+        )
+        return redirect('home')
+
+    context = {'form': form, 'topics': topics}
     return render(request, 'base_app/room_form.html', context)
 
 
@@ -120,16 +139,21 @@ def update_room(request, pk):
     room = Room.objects.get(id=pk)
     form = RoomForm(instance=room)
 
+    topics = Topic.objects.all()
+
     if request.user != room.host:
         return HttpResponse('You are not allowed here!!!')
 
     if request.method == 'POST':
-        form = RoomForm(request.POST, instance=room)
-        if form.is_valid():
-            form.save()
-            return redirect('home')
+        topic_name = request.POST.get('topic')
+        topic, created = Topic.objects.get_or_create(name=topic_name)
+        room.name = request.POST.get('name')
+        room.topic = topic
+        room.description = request.POST.get('description')
+        room.save()
+        return redirect('home')
 
-    context = {'form': form}
+    context = {'form': form, 'topics': topics, 'room': room}
     return render(request, 'base_app/room_form.html', context)
 
 
@@ -157,3 +181,18 @@ def delete_message(request, pk):
         message.delete()
         return redirect('room', pk=message.room.id)
     return render(request, 'base_app/delete.html', {'obj': message})
+
+
+def topics_page(request):
+    q = request.GET.get('q') if 'q' in request.GET.keys() else ''
+    topics = Topic.objects.filter(Q(name__icontains=q))
+
+    rooms = Room.objects.all()
+    context = {'topics': topics, 'rooms_count': rooms.count()}
+    return render(request, 'base_app/topics.html', context=context)
+
+
+def activities_page(request):
+    room_messages = Message.objects.all()
+    context = {'room_messages': room_messages}
+    return render(request, 'base_app/activities.html', context=context)
